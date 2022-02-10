@@ -21,10 +21,24 @@ import java.io.IOException;
 
 /**
  * Created by ashvayka on 27.03.18.
+ * root-接口：监测-websocket-消息通信接口
  */
 public interface TelemetryWebSocketMsgEndpoint {
 
+    /**
+     * 发送指令消息命令方法
+     * @param sessionRef websocket会话对象
+     * @param subscriptionId 消息命令的订阅id（根据订阅ID返回对应的数据）
+     * @param msg 消息对象
+     * @throws IOException
+     */
     void send(TelemetryWebSocketSessionRef sessionRef, int subscriptionId, String msg) throws IOException;
 
+    /**
+     * websocket 通道关闭方法
+     * @param sessionRef websocket会话对象
+     * @param withReason 消息命令的订阅id（根据订阅ID返回对应的数据）
+     * @throws IOException
+     */
     void close(TelemetryWebSocketSessionRef sessionRef, CloseStatus withReason) throws IOException;
 }
