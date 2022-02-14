@@ -51,6 +51,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
+/**
+ * tbwebsocket服务处理的入口程序
+ * extends：
+ *      TextWebSocketHandler：扩展实现spring-websocket通信
+ * implements：
+ *      TelemetryWebSocketMsgEndpoint：监测-websocket-消息通信接口：发送消息、关闭通道方法接口
+ *
+ * websocket通信流程：
+ * 1. 触发入口：调用 ws://localhost:8080/api/ws/plugins/telemetry
+ *
+ */
 @Service
 @Slf4j
 public class TbWebSocketHandler extends TextWebSocketHandler implements TelemetryWebSocketMsgEndpoint {
@@ -102,6 +113,12 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
         }
     }
 
+    /**
+     * 创建websocket连接前方法
+     * 作用：校验是否是合法session用户
+     * @param session
+     * @throws Exception
+     */
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         super.afterConnectionEstablished(session);
@@ -180,6 +197,11 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
         }
     }
 
+    /**
+     * Session元对象实体
+     * implements：
+     *      SendHandler：接口提供onResult方法接收处理消息结果
+     */
     private class SessionMetaData implements SendHandler {
         private final WebSocketSession session;
         private final RemoteEndpoint.Async asyncRemote;

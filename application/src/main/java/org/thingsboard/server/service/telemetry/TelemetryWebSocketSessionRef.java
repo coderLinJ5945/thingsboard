@@ -23,6 +23,7 @@ import java.util.Objects;
 
 /**
  * Created by ashvayka on 27.03.18.
+ * 遥测websocket的session对象实体类
  */
 public class TelemetryWebSocketSessionRef {
 

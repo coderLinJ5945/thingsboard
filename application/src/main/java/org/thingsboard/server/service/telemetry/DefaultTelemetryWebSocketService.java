@@ -81,6 +81,7 @@ import java.util.stream.Collectors;
 
 /**
  * Created by ashvayka on 27.03.18.
+ * 默认的遥测websocket通讯服务
  */
 @Service
 @Slf4j
