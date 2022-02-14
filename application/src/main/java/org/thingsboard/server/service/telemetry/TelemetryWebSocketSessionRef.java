@@ -23,18 +23,25 @@ import java.util.Objects;
 
 /**
  * Created by ashvayka on 27.03.18.
- * 遥测websocket的session对象实体类
+ * 监测-websocket-session会话封装对象实体
  */
 public class TelemetryWebSocketSessionRef {
 
     private static final long serialVersionUID = 1L;
 
+    //session会话id（唯一性）
     @Getter
     private final String sessionId;
+
+    //授权的安全用户对象
     @Getter
     private final SecurityUser securityCtx;
+
+    //socket通信的local地址
     @Getter
     private final InetSocketAddress localAddress;
+
+    //socket通信的远程地址
     @Getter
     private final InetSocketAddress remoteAddress;
 

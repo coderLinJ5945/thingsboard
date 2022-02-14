@@ -81,21 +81,31 @@ import java.util.stream.Collectors;
 
 /**
  * Created by ashvayka on 27.03.18.
- * 默认的遥测websocket通讯服务
+ * 监测-websocket服务（默认实现类）
  */
 @Service
 @Slf4j
 public class DefaultTelemetryWebSocketService implements TelemetryWebSocketService {
 
+    // 查询的key指标限制，小于100
     private static final int DEFAULT_LIMIT = 100;
+
+    //默认统计函数：none
     private static final Aggregation DEFAULT_AGGREGATION = Aggregation.NONE;
+
+    //未知的订阅id，默认为0
     private static final int UNKNOWN_SUBSCRIPTION_ID = 0;
+
+    //debugger消息
     private static final String PROCESSING_MSG = "[{}] Processing: {}";
+
+    //jackson处理json数据
     private static final ObjectMapper jsonMapper = new ObjectMapper();
     private static final String FAILED_TO_FETCH_DATA = "Failed to fetch data!";
     private static final String FAILED_TO_FETCH_ATTRIBUTES = "Failed to fetch attributes!";
     private static final String SESSION_META_DATA_NOT_FOUND = "Session meta-data not found!";
 
+    //存储websocket会话的Map集合，key为sessionId
     private final ConcurrentMap<String, WsSessionMetaData> wsSessionsMap = new ConcurrentHashMap<>();
 
     @Autowired
@@ -129,8 +139,16 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
 
     private ExecutorService executor;
 
+    //初始化：websocket线程池
     @PostConstruct
     public void initExecutor() {
+        /**
+         * newWorkStealingPool: 创建一个维护足够的线程以支持给定的并行级别的线程池，并且可以使用多个队列来减少竞争
+         *                      说人话：创建一个线程池，线程池的特点：
+         *                          1. 支持并行
+         *                          2. 该线程池不保证提交任务的执行顺序
+         *                          3. 线程实际数量可以能会动态增长和收缩
+         */
         executor = Executors.newWorkStealingPool(50);
     }
 

@@ -19,19 +19,19 @@ import org.thingsboard.server.service.telemetry.sub.SubscriptionUpdate;
 
 /**
  * Created by ashvayka on 27.03.18.
- * 遥测数据的websocket服务接口
+ * 处理监测数据的websocket服务接口
  *
  */
 public interface TelemetryWebSocketService {
     /**
-     *
+     * 处理WebSocket会话事件方法
      * @param sessionRef
      * @param sessionEvent
      */
     void handleWebSocketSessionEvent(TelemetryWebSocketSessionRef sessionRef, SessionEvent sessionEvent);
 
     /**
-     *
+     * 处理WebSocket消息方法
      * @param sessionRef
      * @param msg
      */

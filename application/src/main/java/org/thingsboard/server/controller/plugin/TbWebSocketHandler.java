@@ -52,7 +52,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
- * tbwebsocket服务处理的入口程序
+ * websocket服务处理程序
  * extends：
  *      TextWebSocketHandler：扩展实现spring-websocket通信
  * implements：

@@ -19,6 +19,7 @@ import lombok.Data;
 
 /**
  * Created by ashvayka on 27.03.18.
+ * websocket的text格式消息对象实体
  */
 @Data
 public class TelemetryWebSocketTextMsg {

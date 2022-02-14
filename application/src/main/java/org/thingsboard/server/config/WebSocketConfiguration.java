@@ -36,6 +36,12 @@ import org.thingsboard.server.service.security.model.SecurityUser;
 
 import java.util.Map;
 
+/**
+ * websocket配置初始化入口类
+ * implements:
+ *      WebSocketConfigurer(作用：回调实现配置WebSocket请求处理)
+ *
+ */
 @Configuration
 @EnableWebSocket
 public class WebSocketConfiguration implements WebSocketConfigurer {
@@ -43,19 +49,40 @@ public class WebSocketConfiguration implements WebSocketConfigurer {
     public static final String WS_PLUGIN_PREFIX = "/api/ws/plugins/";
     private static final String WS_PLUGIN_MAPPING = WS_PLUGIN_PREFIX + "**";
 
+    /**
+     * ServletServerContainerFactoryBean：
+     * 配置websocket 的ServerContainer的基础属性（服务器容量）
+     * @return
+     */
     @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
+        //设置最大的缓存区大小，单位，byte、KB？
         container.setMaxTextMessageBufferSize(32768);
+        //设置最大二进制消息缓冲区大小，单位，byte、KB？
         container.setMaxBinaryMessageBufferSize(32768);
         return container;
     }
 
+    /**
+     * 回调方法实现来配置WebSocket请求处理（WebSocketConfigurer）
+     * @param registry
+     */
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        //配置业务TbWebSocketHandler绑定映射到指定websocket地址
         registry.addHandler(wsHandler(), WS_PLUGIN_MAPPING).setAllowedOrigins("*")
                 .addInterceptors(new HttpSessionHandshakeInterceptor(), new HandshakeInterceptor() {
 
+                    /**
+                     * 客户端连接之前：判断当前用户是否存在，存在则继续握手通信，不存在则终止
+                     * @param request
+                     * @param response
+                     * @param wsHandler
+                     * @param attributes
+                     * @return  是否继续握手(true)或中止(false)
+                     * @throws Exception
+                     */
                     @Override
                     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler,
                                                    Map<String, Object> attributes) throws Exception {
@@ -71,6 +98,13 @@ public class WebSocketConfiguration implements WebSocketConfigurer {
                         }
                     }
 
+                    /**
+                     *
+                     * @param request
+                     * @param response
+                     * @param wsHandler
+                     * @param exception
+                     */
                     @Override
                     public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler,
                                                Exception exception) {
@@ -84,6 +118,11 @@ public class WebSocketConfiguration implements WebSocketConfigurer {
         return new TbWebSocketHandler();
     }
 
+    /**
+     * 获取当前用户信息（Spring-Security实现）
+     * @return
+     * @throws ThingsboardException
+     */
     protected SecurityUser getCurrentUser() throws ThingsboardException {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof SecurityUser) {

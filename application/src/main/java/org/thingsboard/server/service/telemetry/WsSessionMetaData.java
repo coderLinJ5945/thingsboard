@@ -18,6 +18,7 @@ package org.thingsboard.server.service.telemetry;
 
 /**
  * Created by ashvayka on 27.03.18.
+ * websocket session会话元数据对象实体
  */
 public class WsSessionMetaData {
     private TelemetryWebSocketSessionRef sessionRef;
