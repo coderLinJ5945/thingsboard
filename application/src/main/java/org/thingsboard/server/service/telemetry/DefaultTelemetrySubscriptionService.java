@@ -511,6 +511,11 @@ public class DefaultTelemetrySubscriptionService implements TelemetrySubscriptio
         cleanupWsSessionSubscriptions(sessionId, false);
     }
 
+    /**
+     * 清除本地的websocketSession定于
+     * @param sessionId
+     * @param localSession
+     */
     private void cleanupWsSessionSubscriptions(String sessionId, boolean localSession) {
         log.debug("[{}] Removing all subscriptions for particular session.", sessionId);
         Map<Integer, Subscription> sessionSubscriptions = subscriptionsByWsSessionId.get(sessionId);

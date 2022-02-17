@@ -66,6 +66,8 @@ import java.util.function.BiConsumer;
 
 /**
  * Created by ashvayka on 27.03.18.
+ * 查询数据库数据，返回的数据验证器
+ * // TODO: 2022/2/17 重新封装一个Map几个的返回验证对象，先是同步查询--->异步返回--->同步Map数据组装--->异步返回
  */
 @Component
 public class AccessValidator {

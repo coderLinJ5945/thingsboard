@@ -27,7 +27,7 @@ import org.thingsboard.server.service.telemetry.sub.SubscriptionState;
 public interface TelemetrySubscriptionService extends RuleEngineTelemetryService {
 
     void addLocalWsSubscription(String sessionId, EntityId entityId, SubscriptionState sub);
-
+    //清理本地WsSession订阅
     void cleanupLocalWsSessionSubscriptions(TelemetryWebSocketSessionRef sessionRef, String sessionId);
 
     void removeSubscription(String sessionId, int cmdId);

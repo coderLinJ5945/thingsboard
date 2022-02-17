@@ -19,6 +19,10 @@ import java.util.List;
 
 /**
  * @author Andrew Shvayka
+ * 设计的三种类型的指令：
+ * 属性查询指令：attrSubCmds
+ * 最新数据指令：tsSubCmds
+ * 历史数据指令：historyCmds
  */
 public class TelemetryPluginCmdsWrapper {
 

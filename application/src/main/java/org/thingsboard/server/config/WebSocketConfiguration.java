@@ -39,7 +39,7 @@ import java.util.Map;
 /**
  * websocket配置初始化入口类
  * implements:
- *      WebSocketConfigurer(作用：回调实现配置WebSocket请求处理)
+ *      WebSocketConfigurer(作用：通过@EnableWebSocket定义回调方法来配置WebSocket请求处理)
  *
  */
 @Configuration
@@ -50,7 +50,7 @@ public class WebSocketConfiguration implements WebSocketConfigurer {
     private static final String WS_PLUGIN_MAPPING = WS_PLUGIN_PREFIX + "**";
 
     /**
-     * ServletServerContainerFactoryBean：
+     * ServletServerContainerFactoryBean：个人理解，每个消息快递包裹箱的大小设置对象
      * 配置websocket 的ServerContainer的基础属性（服务器容量）
      * @return
      */
@@ -65,17 +65,21 @@ public class WebSocketConfiguration implements WebSocketConfigurer {
     }
 
     /**
-     * 回调方法实现来配置WebSocket请求处理（WebSocketConfigurer）
+     * 注册WebSocket通信的处理服务：回调实现（WebSocketConfigurer）
      * @param registry
      */
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        //配置业务TbWebSocketHandler绑定映射到指定websocket地址
+        //
+        /**
+         * 1. registry.addHandler()配置TbWebSocketHandler通信的处理类绑定映射到指定websocket地址(/api/ws/plugins/**)
+         * 2. WebSocketHandlerRegistration.addInterceptors:配置握手请求的拦截器：HttpSessionHandshakeInterceptor 和  HandshakeInterceptor
+         */
         registry.addHandler(wsHandler(), WS_PLUGIN_MAPPING).setAllowedOrigins("*")
                 .addInterceptors(new HttpSessionHandshakeInterceptor(), new HandshakeInterceptor() {
 
                     /**
-                     * 客户端连接之前：判断当前用户是否存在，存在则继续握手通信，不存在则终止
+                     * 客户端和服务端握手前：获取并判断当前用户是否存在，存在则继续握手通信，不存在则终止
                      * @param request
                      * @param response
                      * @param wsHandler
@@ -94,6 +98,7 @@ public class WebSocketConfiguration implements WebSocketConfigurer {
                             response.setStatusCode(HttpStatus.UNAUTHORIZED);
                             return false;
                         } else {
+                            //这里就是返回给前端连接Status Code: 101 状态码
                             return true;
                         }
                     }

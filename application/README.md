@@ -1,5 +1,4 @@
 
-
 ## 程序启动初始化加载顺序
 ### 一、ThingsboardServerApplication 启动，扫描发现配置
 1. 加载thingsboard.yml配置文件

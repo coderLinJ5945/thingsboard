@@ -7,6 +7,7 @@
 6. jdk1.8新特性（解决：多线程等）：https://www.runoob.com/java/java8-new-features.html
 7. HAProxy （解决：高可用性、负载均衡等）
 8. guava（解决：异步/同步、并发 和回调等） 学习：https://github.com/google/guava
+9. websocket：https://docs.spring.io/spring-framework/docs/5.2.19.RELEASE/spring-framework-reference/web.html#websocket
 
 # 使用参考文档：
 1. HTTP设备API参考（设备主动发送）：https://thingsboard.io/docs/reference/http-api/

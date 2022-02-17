@@ -36,7 +36,8 @@ server:
     send_timeout: "${TB_SERVER_WS_SEND_TIMEOUT:5000}"
     limits:
       # Limit the amount of sessions and subscriptions available on each server. Put values to zero to disable particular limitation
-      max_sessions_per_tenant: "${TB_SERVER_WS_TENANT_RATE_LIMITS_MAX_SESSIONS_PER_TENANT:0}"
+      # 限制每个服务器上可用的会话和订阅的数量。将值设置为0以禁用特定的限制
+      max_sessions_per_tenant: "${TB_SERVER_WS_TENANT_RATE_LIMITS_MAX_SESSIONS_PER_TENANT:10}"
       max_sessions_per_customer: "${TB_SERVER_WS_TENANT_RATE_LIMITS_MAX_SESSIONS_PER_CUSTOMER:0}"
       max_sessions_per_regular_user: "${TB_SERVER_WS_TENANT_RATE_LIMITS_MAX_SESSIONS_PER_REGULAR_USER:0}"
       max_sessions_per_public_user: "${TB_SERVER_WS_TENANT_RATE_LIMITS_MAX_SESSIONS_PER_PUBLIC_USER:0}"
@@ -426,6 +427,7 @@ state:
   defaultStateCheckIntervalInSec: "${DEFAULT_STATE_CHECK_INTERVAL:10}"
   persistToTelemetry: "${PERSIST_STATE_TO_TELEMETRY:false}"
 
+# todo这里的kafka消息队列是用来干嘛的？？？
 kafka:
   enabled: true
   bootstrap.servers: "${TB_KAFKA_SERVERS:localhost:9092}"

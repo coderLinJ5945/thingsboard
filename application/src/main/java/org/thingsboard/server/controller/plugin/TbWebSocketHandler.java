@@ -52,9 +52,9 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
- * websocket服务处理程序
+ * websocket服务处理程序（主要负责websocket相关的通讯信息）
  * extends：
- *      TextWebSocketHandler：扩展实现spring-websocket通信
+ *      TextWebSocketHandler：一个方便的WebSocketHandler实现的基类，它只处理文本消息
  * implements：
  *      TelemetryWebSocketMsgEndpoint：监测-websocket-消息通信接口：发送消息、关闭通道方法接口
  *
@@ -66,6 +66,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 @Slf4j
 public class TbWebSocketHandler extends TextWebSocketHandler implements TelemetryWebSocketMsgEndpoint {
 
+    //内部会话id集合和外部会话id集合：用于控制websocket会话允许的最大连接？
     private static final ConcurrentMap<String, SessionMetaData> internalSessionMap = new ConcurrentHashMap<>();
     private static final ConcurrentMap<String, String> externalSessionMap = new ConcurrentHashMap<>();
 
@@ -74,7 +75,7 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
 
     @Value("${server.ws.send_timeout:5000}")
     private long sendTimeout;
-
+    //限制每个服务器上可用的会话和订阅的数量。将值设置为0以禁用特定的限制
     @Value("${server.ws.limits.max_sessions_per_tenant:0}")
     private int maxSessionsPerTenant;
     @Value("${server.ws.limits.max_sessions_per_customer:0}")
@@ -83,6 +84,8 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
     private int maxSessionsPerRegularUser;
     @Value("${server.ws.limits.max_sessions_per_public_user:0}")
     private int maxSessionsPerPublicUser;
+
+    //websocket允许的最大连接数
     @Value("${server.ws.limits.max_queue_per_ws_session:1000}")
     private int maxMsgQueuePerSession;
 
@@ -92,17 +95,29 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
     private ConcurrentMap<String, TelemetryWebSocketSessionRef> blacklistedSessions = new ConcurrentHashMap<>();
     private ConcurrentMap<String, TbRateLimits> perSessionUpdateLimits = new ConcurrentHashMap<>();
 
+    /**
+     * 分角色存储的不同用户的session集合
+     * 作用：用于做判断限制每个服务器上可用的会话和订阅的数，来起到限制websocket会话数量的作用
+     */
     private ConcurrentMap<TenantId, Set<String>> tenantSessionsMap = new ConcurrentHashMap<>();
     private ConcurrentMap<CustomerId, Set<String>> customerSessionsMap = new ConcurrentHashMap<>();
     private ConcurrentMap<UserId, Set<String>> regularUserSessionsMap = new ConcurrentHashMap<>();
     private ConcurrentMap<UserId, Set<String>> publicUserSessionsMap = new ConcurrentHashMap<>();
 
+    /**
+     * 接收处理web发送的指令：{"tsSubCmds":[{"entityType":"DEVICE","entityId":"16afb310-8a21-11ec-9898-ddf00ff45e55","scope":"LATEST_TELEMETRY","cmdId":2}],"historyCmds":[],"attrSubCmds":[{"entityType":"DEVICE","entityId":"16afb310-8a21-11ec-9898-ddf00ff45e55","scope":"CLIENT_SCOPE","cmdId":1}]}
+     * 当新的WebSocket消息到达时调用
+     * @param session
+     * @param message
+     */
     @Override
     public void handleTextMessage(WebSocketSession session, TextMessage message) {
         try {
+            //获取session，session不为空则传递按照业务处理msg
             SessionMetaData sessionMd = internalSessionMap.get(session.getId());
             if (sessionMd != null) {
                 log.info("[{}][{}] Processing {}", sessionMd.sessionRef.getSecurityCtx().getTenantId(), session.getId(), message.getPayload());
+                //获取到前端的查询命令，处理业务逻辑方法：TelemetryWebSocketService.handleWebSocketMsg
                 webSocketService.handleWebSocketMsg(sessionMd.sessionRef, message.getPayload());
             } else {
                 log.warn("[{}] Failed to find session", session.getId());
@@ -114,8 +129,8 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
     }
 
     /**
-     * 创建websocket连接前方法
-     * 作用：校验是否是合法session用户
+     * WebSocket协商（握手）成功后调用，WebSocket连接打开并准备使用
+     * 作用：校验是否是合法session用户，管理用户session（绑定、限制连接等）
      * @param session
      * @throws Exception
      */
@@ -129,14 +144,23 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
                     nativeSession.getAsyncRemote().setSendTimeout(sendTimeout);
                 }
             }
+            //internalSessionId 内部会话id，指的是服务内部的sessionid
+            //externalSessionId 外部会话id，指的是用户的会话id
+            //todo 这两个id有什么用？为什么要绑定
             String internalSessionId = session.getId();
             TelemetryWebSocketSessionRef sessionRef = toRef(session);
             String externalSessionId = sessionRef.getSessionId();
+            //检查限制每个服务器上可用的会话和订阅的数量。将max_sessions_per值设置为0以禁用特定的限制
             if (!checkLimits(session, sessionRef)) {
                 return;
             }
+            //内部会话id绑定到SessionMetaData
             internalSessionMap.put(internalSessionId, new SessionMetaData(session, sessionRef, maxMsgQueuePerSession));
+            //将外部sessionid绑定到内部会话id集合上
             externalSessionMap.put(externalSessionId, internalSessionId);
+            /*
+               从web发起建立连接的事件类型：onEstablished
+             */
             processInWebSocketService(sessionRef, SessionEvent.onEstablished());
             log.info("[{}][{}][{}] Session is opened", sessionRef.getSecurityCtx().getTenantId(), externalSessionId, session.getId());
         } catch (InvalidParameterException e) {
@@ -148,6 +172,12 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
         }
     }
 
+    /**
+     * 处理来自底层WebSocket消息传输的错误
+     * @param session
+     * @param tError
+     * @throws Exception
+     */
     @Override
     public void handleTransportError(WebSocketSession session, Throwable tError) throws Exception {
         super.handleTransportError(session, tError);
@@ -160,6 +190,13 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
         log.trace("[{}] Session transport error", session.getId(), tError);
     }
 
+    /**
+     *
+     * 在WebSocket连接被任何一方关闭后，或者在传输错误发生后调用
+     * @param session
+     * @param closeStatus
+     * @throws Exception
+     */
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
         super.afterConnectionClosed(session, closeStatus);
@@ -172,14 +209,27 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
         log.info("[{}] Session is closed", session.getId());
     }
 
+    /**
+     * 从ui进来的websocket连接session事件
+     * @param sessionRef
+     * @param event
+     */
     private void processInWebSocketService(TelemetryWebSocketSessionRef sessionRef, SessionEvent event) {
         try {
+            //发起WebSocketsession事件，事件类型：发起连接、关闭连接 or error
             webSocketService.handleWebSocketSessionEvent(sessionRef, event);
         } catch (BeanCreationNotAllowedException e) {
             log.warn("[{}] Failed to close session due to possible shutdown state", sessionRef.getSessionId());
         }
     }
 
+    /**
+     * 从WebSocketSession 获取websocket的url，再从url中末尾中截取关键字
+     * 如果关键字匹配telemetry，则创建并返回TelemetryWebSocketSessionRef
+     * @param session
+     * @return
+     * @throws IOException
+     */
     private TelemetryWebSocketSessionRef toRef(WebSocketSession session) throws IOException {
         URI sessionUri = session.getUri();
         String path = sessionUri.getPath();
@@ -193,6 +243,8 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
             throw new InvalidParameterException("Can't find plugin with specified token!");
         } else {
             SecurityUser currentUser = (SecurityUser) ((Authentication) session.getPrincipal()).getPrincipal();
+            //LocalAddress:/0:0:0:0:0:0:0:1:8080
+            //RemoteAddress:/0:0:0:0:0:0:0:1:53922
             return new TelemetryWebSocketSessionRef(UUID.randomUUID().toString(), currentUser, session.getLocalAddress(), session.getRemoteAddress());
         }
     }
@@ -322,8 +374,25 @@ public class TbWebSocketHandler extends TextWebSocketHandler implements Telemetr
         }
     }
 
+    /**
+     * 检查限制每个服务器上可用的会话和订阅的数量。将max_sessions_per值设置为0以禁用特定的限制
+     * 根据角色来：
+     * tenantSessionsMap：租户角色
+     * customerSessionsMap：客户角色
+     * regularUserSessionsMap：普通用户角色
+     * publicUserSessionsMap：开放用户角色
+     * @param session
+     * @param sessionRef
+     * @return
+     * @throws Exception
+     */
     private boolean checkLimits(WebSocketSession session, TelemetryWebSocketSessionRef sessionRef) throws Exception {
         String sessionId = session.getId();
+        /*
+         * 1.如果限制会话和订阅的数量大于0，
+         * 2.去ConcurrentMap获取对应的用户id是否存在
+         * 3.如果当前的session个数小于限制的个数，则添加当前用户到Map，并返回true。反之则返回false
+         */
         if (maxSessionsPerTenant > 0) {
             Set<String> tenantSessions = tenantSessionsMap.computeIfAbsent(sessionRef.getSecurityCtx().getTenantId(), id -> ConcurrentHashMap.newKeySet());
             synchronized (tenantSessions) {

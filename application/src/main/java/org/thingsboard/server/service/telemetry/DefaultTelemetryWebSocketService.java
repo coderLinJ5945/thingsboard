@@ -81,7 +81,7 @@ import java.util.stream.Collectors;
 
 /**
  * Created by ashvayka on 27.03.18.
- * 监测-websocket服务（默认实现类）
+ * 监测-websocket服务（默认实现类，主要负责msg的业务处理逻辑）
  */
 @Service
 @Slf4j
@@ -105,7 +105,7 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
     private static final String FAILED_TO_FETCH_ATTRIBUTES = "Failed to fetch attributes!";
     private static final String SESSION_META_DATA_NOT_FOUND = "Session meta-data not found!";
 
-    //存储websocket会话的Map集合，key为sessionId
+    //存储建立连接的websocket会话的Map集合，key为sessionId
     private final ConcurrentMap<String, WsSessionMetaData> wsSessionsMap = new ConcurrentHashMap<>();
 
     @Autowired
@@ -132,6 +132,10 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
     @Value("${server.ws.limits.max_subscriptions_per_public_user:0}")
     private int maxSubscriptionsPerPublicUser;
 
+    /**
+     * 分角色存储的不同用户的session订阅信息
+     * 作用：用于做判断限制每个服务器上可用的会话和订阅的数，来起到限制websocket会话数量的作用
+     */
     private ConcurrentMap<TenantId, Set<String>> tenantSubscriptionsMap = new ConcurrentHashMap<>();
     private ConcurrentMap<CustomerId, Set<String>> customerSubscriptionsMap = new ConcurrentHashMap<>();
     private ConcurrentMap<UserId, Set<String>> regularUserSubscriptionsMap = new ConcurrentHashMap<>();
@@ -159,37 +163,60 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         }
     }
 
+    /**
+     * 处理websocket的会话事件方法
+     * @param sessionRef
+     * @param event
+     */
     @Override
     public void handleWebSocketSessionEvent(TelemetryWebSocketSessionRef sessionRef, SessionEvent event) {
         String sessionId = sessionRef.getSessionId();
         log.debug(PROCESSING_MSG, sessionId, event);
         switch (event.getEventType()) {
+            // 建立连接的事件类型
             case ESTABLISHED:
+                //存储websocket连接的用户的session，并保存WsSessionMetaData（当前连接的时间为最后一次的活跃时间：lastActivityTime）
                 wsSessionsMap.put(sessionId, new WsSessionMetaData(sessionRef));
                 break;
+            // 异常类型事件
             case ERROR:
                 log.debug("[{}] Unknown websocket session error: {}. ", sessionId, event.getError().orElse(null));
                 break;
+            // 关闭连接事件
             case CLOSED:
+                //移除存储websocket连接的用户的session
                 wsSessionsMap.remove(sessionId);
+                //清除该sessionRef的本地websocketSession订阅信息
                 subscriptionManager.cleanupLocalWsSessionSubscriptions(sessionRef, sessionId);
+                //关闭session
                 processSessionClose(sessionRef);
                 break;
         }
     }
 
+    /**
+     * 处理从前端传入的WebSocket消息指令方法
+     * @param sessionRef
+     * @param msg
+     */
     @Override
     public void handleWebSocketMsg(TelemetryWebSocketSessionRef sessionRef, String msg) {
         if (log.isTraceEnabled()) {
             log.trace("[{}] Processing: {}", sessionRef.getSessionId(), msg);
         }
-
+        /**
+         * 指令分类型处理：
+         * 属性查询指令：attrSubCmds
+         * 最新数据指令：tsSubCmds
+         * 历史数据指令：historyCmds
+         */
         try {
             TelemetryPluginCmdsWrapper cmdsWrapper = jsonMapper.readValue(msg, TelemetryPluginCmdsWrapper.class);
             if (cmdsWrapper != null) {
                 if (cmdsWrapper.getAttrSubCmds() != null) {
                     cmdsWrapper.getAttrSubCmds().forEach(cmd -> {
                         if (processSubscription(sessionRef, cmd)) {
+                            //查询属性的指令方法
                             handleWsAttributesSubscriptionCmd(sessionRef, cmd);
                         }
                     });
@@ -197,11 +224,13 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
                 if (cmdsWrapper.getTsSubCmds() != null) {
                     cmdsWrapper.getTsSubCmds().forEach(cmd -> {
                         if (processSubscription(sessionRef, cmd)) {
+                            //查询最新监测数据的指令方法
                             handleWsTimeseriesSubscriptionCmd(sessionRef, cmd);
                         }
                     });
                 }
                 if (cmdsWrapper.getHistoryCmds() != null) {
+                    //查询历史数据的指令方法
                     cmdsWrapper.getHistoryCmds().forEach(cmd -> handleWsHistoryCmd(sessionRef, cmd));
                 }
             }
@@ -220,6 +249,10 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         }
     }
 
+    /**
+     * 关闭session，从ConcurrentMap集合中删除session
+     * @param sessionRef
+     */
     private void processSessionClose(TelemetryWebSocketSessionRef sessionRef) {
         String sessionId = "[" + sessionRef.getSessionId() + "]";
         if (maxSubscriptionsPerTenant > 0) {
@@ -319,17 +352,26 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         return true;
     }
 
+    /**
+     * 查询实体属性的命令方法
+     * @param sessionRef
+     * @param cmd
+     */
     private void handleWsAttributesSubscriptionCmd(TelemetryWebSocketSessionRef sessionRef, AttributesSubscriptionCmd cmd) {
         String sessionId = sessionRef.getSessionId();
         log.debug("[{}] Processing: {}", sessionId, cmd);
-
+        //验证命令的session
         if (validateSessionMetadata(sessionRef, cmd, sessionId)) {
             if (cmd.isUnsubscribe()) {
+                //退订的cmd命令
                 unsubscribe(sessionRef, cmd, sessionId);
             } else if (validateSubscriptionCmd(sessionRef, cmd)) {
+                //验证命令中的实体，如果存在，去数据库查询实体
                 EntityId entityId = EntityIdFactory.getByTypeAndId(cmd.getEntityType(), cmd.getEntityId());
                 log.debug("[{}] fetching latest attributes ({}) values for device: {}", sessionId, cmd.getKeys(), entityId);
+                //获取指标名称
                 Optional<Set<String>> keysOptional = getKeys(cmd);
+                //如果指标名称存在，带指标名称查询，如果不存在则查询所有
                 if (keysOptional.isPresent()) {
                     List<String> keys = new ArrayList<>(keysOptional.get());
                     handleWsAttributesSubscriptionByKeys(sessionRef, cmd, sessionId, entityId, keys);
@@ -379,6 +421,11 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         }
     }
 
+    /**
+     * 查询历史数据的指令方法
+     * @param sessionRef
+     * @param cmd
+     */
     private void handleWsHistoryCmd(TelemetryWebSocketSessionRef sessionRef, GetHistoryCmd cmd) {
         String sessionId = sessionRef.getSessionId();
         WsSessionMetaData sessionMD = wsSessionsMap.get(sessionId);
@@ -429,12 +476,20 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
                 on(r -> Futures.addCallback(tsService.findAll(sessionRef.getSecurityCtx().getTenantId(), entityId, queries), callback, executor), callback::onFailure));
     }
 
+    /**
+     * websocket属性的异步查询（FutureCallback）
+     * @param sessionRef
+     * @param cmd
+     * @param sessionId
+     * @param entityId
+     */
     private void handleWsAttributesSubscription(TelemetryWebSocketSessionRef sessionRef,
                                                 AttributesSubscriptionCmd cmd, String sessionId, EntityId entityId) {
         FutureCallback<List<AttributeKvEntry>> callback = new FutureCallback<List<AttributeKvEntry>>() {
             @Override
             public void onSuccess(List<AttributeKvEntry> data) {
                 List<TsKvEntry> attributesData = data.stream().map(d -> new BasicTsKvEntry(d.getLastUpdateTs(), d)).collect(Collectors.toList());
+                //返回后台获取到的数据返回到前端
                 sendWsMsg(sessionRef, new SubscriptionUpdate(cmd.getCmdId(), attributesData));
 
                 Map<String, Long> subState = new HashMap<>(attributesData.size());
@@ -453,7 +508,7 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
             }
         };
 
-
+        //最终的数据库查询代码
         if (StringUtils.isEmpty(cmd.getScope())) {
             accessValidator.validate(sessionRef.getSecurityCtx(), Operation.READ_ATTRIBUTES, entityId, getAttributesFetchCallback(sessionRef.getSecurityCtx().getTenantId(), entityId, callback));
         } else {
@@ -461,6 +516,11 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         }
     }
 
+    /**
+     * 查询最新监测数据的指令方法
+     * @param sessionRef
+     * @param cmd
+     */
     private void handleWsTimeseriesSubscriptionCmd(TelemetryWebSocketSessionRef sessionRef, TimeseriesSubscriptionCmd cmd) {
         String sessionId = sessionRef.getSessionId();
         log.debug("[{}] Processing: {}", sessionId, cmd);
@@ -505,6 +565,13 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         }
     }
 
+    /**
+     *
+     * @param sessionRef
+     * @param cmd
+     * @param sessionId
+     * @param entityId
+     */
     private void handleWsTimeseriesSubscription(TelemetryWebSocketSessionRef sessionRef,
                                                 TimeseriesSubscriptionCmd cmd, String sessionId, EntityId entityId) {
         FutureCallback<List<TsKvEntry>> callback = new FutureCallback<List<TsKvEntry>>() {
@@ -561,6 +628,12 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         };
     }
 
+    /**
+     * 退订方法
+     * @param sessionRef
+     * @param cmd
+     * @param sessionId
+     */
     private void unsubscribe(TelemetryWebSocketSessionRef sessionRef, SubscriptionCmd cmd, String sessionId) {
         if (cmd.getEntityId() == null || cmd.getEntityId().isEmpty()) {
             subscriptionManager.cleanupLocalWsSessionSubscriptions(sessionRef, sessionId);
@@ -579,6 +652,13 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         return true;
     }
 
+    /**
+     *
+     * @param sessionRef
+     * @param cmd
+     * @param sessionId
+     * @return
+     */
     private boolean validateSessionMetadata(TelemetryWebSocketSessionRef sessionRef, SubscriptionCmd cmd, String sessionId) {
         WsSessionMetaData sessionMD = wsSessionsMap.get(sessionId);
         if (sessionMD == null) {
@@ -659,12 +739,21 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         };
     }
 
+    /**
+     * 获取属性的异步数据库查询接口
+     * @param tenantId
+     * @param entityId
+     * @param callback
+     * @param <T>
+     * @return
+     */
     private <T> FutureCallback<ValidationResult> getAttributesFetchCallback(final TenantId tenantId, final EntityId entityId, final FutureCallback<List<AttributeKvEntry>> callback) {
         return new FutureCallback<ValidationResult>() {
             @Override
             public void onSuccess(@Nullable ValidationResult result) {
                 List<ListenableFuture<List<AttributeKvEntry>>> futures = new ArrayList<>();
                 for (String scope : DataConstants.allScopes()) {
+                    //数据持久化层的访问调用
                     futures.add(attributesService.findAll(tenantId, entityId, scope));
                 }
 
@@ -712,7 +801,7 @@ public class DefaultTelemetryWebSocketService implements TelemetryWebSocketServi
         };
     }
 
-
+    //统计函数
     private static Aggregation getAggregation(String agg) {
         return StringUtils.isEmpty(agg) ? DEFAULT_AGGREGATION : Aggregation.valueOf(agg);
     }
