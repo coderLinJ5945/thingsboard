@@ -135,7 +135,7 @@ public class MqttTransportHandler extends ChannelInboundHandlerAdapter implement
         }
     }
 
-    private void processMqttMsg(ChannelHandlerContext ctx, MqttMessage msg) {
+/*    private void processMqttMsg(ChannelHandlerContext ctx, MqttMessage msg) {
         address = (InetSocketAddress) ctx.channel().remoteAddress();
         if (msg.fixedHeader() == null) {
             log.info("[{}:{}] Invalid message received", address.getHostName(), address.getPort());
@@ -174,8 +174,64 @@ public class MqttTransportHandler extends ChannelInboundHandlerAdapter implement
                 break;
         }
 
-    }
+    }*/
+    /*  Fix MQTT inactivity disconnects!
+        原因：如果MQTT客户端最近发送了[UN]SUBSCRIBE/PUBLISH消息，则不发送PINGREQ消息。
+             MQTT服务器最近的活动时间戳目前仅在响应PINGREQ消息时更新。
+             这将导致服务器断开任何定期发送PUBLISH消息的客户机的连接，因为它们不发送PINGREQ。
+     */
+    private void processMqttMsg(ChannelHandlerContext ctx, MqttMessage msg) {
+        address = (InetSocketAddress) ctx.channel().remoteAddress();
+        if (msg.fixedHeader() == null) {
+            log.info("[{}:{}] Invalid message received", address.getHostName(), address.getPort());
+            processDisconnect(ctx);
+            return;
+        }
+        deviceSessionCtx.setChannel(ctx);
+        switch (msg.fixedHeader().messageType()) {
+            case CONNECT:
+                processConnect(ctx, (MqttConnectMessage) msg);
+                break;
+            case PUBLISH:
+                processPublish(ctx, (MqttPublishMessage) msg);
+                transportService.reportActivity(sessionInfo);
+                if (gatewaySessionHandler != null) {
+                    gatewaySessionHandler.reportActivity();
+                }
+                break;
+            case SUBSCRIBE:
+                processSubscribe(ctx, (MqttSubscribeMessage) msg);
+                transportService.reportActivity(sessionInfo);
+                if (gatewaySessionHandler != null) {
+                    gatewaySessionHandler.reportActivity();
+                }
+                break;
+            case UNSUBSCRIBE:
+                processUnsubscribe(ctx, (MqttUnsubscribeMessage) msg);
+                transportService.reportActivity(sessionInfo);
+                if (gatewaySessionHandler != null) {
+                    gatewaySessionHandler.reportActivity();
+                }
+                break;
+            case PINGREQ:
+                if (checkConnected(ctx, msg)) {
+                    ctx.writeAndFlush(new MqttMessage(new MqttFixedHeader(PINGRESP, false, AT_MOST_ONCE, false, 0)));
+                    transportService.reportActivity(sessionInfo);
+                    if (gatewaySessionHandler != null) {
+                        gatewaySessionHandler.reportActivity();
+                    }
+                }
+                break;
+            case DISCONNECT:
+                if (checkConnected(ctx, msg)) {
+                    processDisconnect(ctx);
+                }
+                break;
+            default:
+                break;
+        }
 
+    }
     private void processPublish(ChannelHandlerContext ctx, MqttPublishMessage mqttMsg) {
         if (!checkConnected(ctx, mqttMsg)) {
             return;
