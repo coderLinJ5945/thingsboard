@@ -100,7 +100,7 @@ public class MqttTransportHandler extends ChannelInboundHandlerAdapter implement
     private volatile DeviceSessionCtx deviceSessionCtx;
     private volatile GatewaySessionHandler gatewaySessionHandler;
 
-    MqttTransportHandler(MqttTransportContext context) {
+/*    MqttTransportHandler(MqttTransportContext context) {
         this.sessionId = UUID.randomUUID();
         this.context = context;
         this.transportService = context.getTransportService();
@@ -108,7 +108,18 @@ public class MqttTransportHandler extends ChannelInboundHandlerAdapter implement
         this.sslHandler = context.getSslHandler();
         this.mqttQoSMap = new ConcurrentHashMap<>();
         this.deviceSessionCtx = new DeviceSessionCtx(sessionId, mqttQoSMap);
+    }*/
+    // fix bug:Device reconnect abnormal when certificate authentication is turned on;
+    MqttTransportHandler(MqttTransportContext context,SslHandler sslHandler) {
+        this.sessionId = UUID.randomUUID();
+        this.context = context;
+        this.transportService = context.getTransportService();
+        this.adaptor = context.getAdaptor();
+        this.sslHandler = sslHandler;
+        this.mqttQoSMap = new ConcurrentHashMap<>();
+        this.deviceSessionCtx = new DeviceSessionCtx(sessionId, mqttQoSMap);
     }
+
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {

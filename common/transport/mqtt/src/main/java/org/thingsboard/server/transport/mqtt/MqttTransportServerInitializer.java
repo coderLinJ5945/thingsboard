@@ -33,7 +33,7 @@ public class MqttTransportServerInitializer extends ChannelInitializer<SocketCha
         this.context = context;
     }
 
-    @Override
+    /*@Override
     public void initChannel(SocketChannel ch) {
         ChannelPipeline pipeline = ch.pipeline();
         if (context.getSslHandlerProvider() != null) {
@@ -48,6 +48,21 @@ public class MqttTransportServerInitializer extends ChannelInitializer<SocketCha
 
         pipeline.addLast(handler);
         ch.closeFuture().addListener(handler);
-    }
+    }*/
+    // fix bug:Device reconnect abnormal when certificate authentication is turned on;
+    public void initChannel(SocketChannel ch) {
+        ChannelPipeline pipeline = ch.pipeline();
+        SslHandler sslHandler = null;
+        if (context.getSslHandlerProvider() != null) {
+            sslHandler = context.getSslHandlerProvider().getSslHandler();
+            pipeline.addLast(sslHandler);
+            context.setSslHandler(sslHandler);
+        }
+        pipeline.addLast("decoder", new MqttDecoder(context.getMaxPayloadSize()));
+        pipeline.addLast("encoder", MqttEncoder.INSTANCE);
+        MqttTransportHandler handler = new MqttTransportHandler(context,sslHandler);
 
+        pipeline.addLast(handler);
+        ch.closeFuture().addListener(handler);
+    }
 }
