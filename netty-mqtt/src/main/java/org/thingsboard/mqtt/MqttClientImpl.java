@@ -407,8 +407,19 @@ final class MqttClientImpl implements MqttClient {
     }
 
     private MqttMessageIdVariableHeader getNewMessageId() {
-        this.nextMessageId.compareAndSet(0xffff, 1);
-        return MqttMessageIdVariableHeader.from(this.nextMessageId.getAndIncrement());
+        /*this.nextMessageId.compareAndSet(0xffff, 1);
+        return MqttMessageIdVariableHeader.from(this.nextMessageId.getAndIncrement());*/
+        /**
+         * fix bug: Under high concurrency, Mqtt client nextMessageId exceeds the 0xffff limit
+         * 原因说明：AtomicInteger类的compareAndSet方法和getAndIncrement方法是具有原子性的，
+         *         但是当这两个方法同时使用时，它们就不再是原子的了。
+         */
+        int messageId;
+        synchronized (this.nextMessageId) {
+            this.nextMessageId.compareAndSet(0xffff, 1);
+            messageId = this.nextMessageId.getAndIncrement();
+        }
+        return MqttMessageIdVariableHeader.from(messageId);
     }
 
     private Future<Void> createSubscription(String topic, MqttHandler handler, boolean once, MqttQoS qos) {
